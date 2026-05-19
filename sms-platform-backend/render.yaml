@@ -1,19 +1,18 @@
+# 1. Base de données PostgreSQL managée par Render (au premier niveau)
+database:
+  name: sendreach-db
+  databaseName: sendreach_prod
+  user: sendreach_admin
+  plan: free # Plan gratuit pour le développement/test
+
+# 2. Instance Redis managée par Render (au premier niveau)
+redis:
+  name: sendreach-redis
+  plan: free
+  ipAllowList: [] # Sécurisé en accès interne uniquement
+
+# 3. Services applicatifs (API + Workers)
 services:
-  # 1. Base de données PostgreSQL managée par Render
-  - type: db
-    name: sendreach-db
-    databaseName: sendreach_prod
-    user: sendreach_admin
-    plan: free # Plan gratuit pour le développement/test
-    ipAllowList: [] # N'autorise que les connexions internes de Render pour une sécurité maximale
-
-  # 2. Instance Redis managée par Render (requis pour les files d'attente BullMQ)
-  - type: redis
-    name: sendreach-redis
-    plan: free
-    ipAllowList: [] # Sécurisé en accès interne uniquement
-
-  # 3. Service Web principal Node.js (API Express + Workers BullMQ intégrés)
   - type: web
     name: sendreach-api
     env: node
