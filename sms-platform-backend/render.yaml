@@ -2,7 +2,7 @@
 databases:
   - name: sendreach-db
     databaseName: sendreach_prod
-    databaseUser: sendreach_admin
+    user: sendreach_admin
     plan: free # Plan gratuit pour le développement/test
 
 # 2. Services applicatifs (API + Redis)
