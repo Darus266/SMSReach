@@ -1,18 +1,19 @@
-# 1. Base de données PostgreSQL managée par Render (au premier niveau)
-database:
-  name: sendreach-db
-  databaseName: sendreach_prod
-  user: sendreach_admin
-  plan: free # Plan gratuit pour le développement/test
+# 1. Base de données PostgreSQL managée par Render
+databases:
+  - name: sendreach-db
+    databaseName: sendreach_prod
+    databaseUser: sendreach_admin
+    plan: free # Plan gratuit pour le développement/test
 
-# 2. Instance Redis managée par Render (au premier niveau)
-redis:
-  name: sendreach-redis
-  plan: free
-  ipAllowList: [] # Sécurisé en accès interne uniquement
-
-# 3. Services applicatifs (API + Workers)
+# 2. Services applicatifs (API + Redis)
 services:
+  # Instance Redis (Key-Value) managée par Render
+  - type: keyvalue
+    name: sendreach-redis
+    plan: free
+    ipAllowList: [] # Sécurisé en accès interne uniquement
+
+  # Service Web principal Node.js (API Express + Workers BullMQ intégrés)
   - type: web
     name: sendreach-api
     env: node
@@ -33,12 +34,12 @@ services:
       - key: REDIS_HOST
         fromService:
           name: sendreach-redis
-          type: redis
+          type: keyvalue
           property: host
       - key: REDIS_PORT
         fromService:
           name: sendreach-redis
-          type: redis
+          type: keyvalue
           property: port
 
       # Génération automatique de clés secrètes aléatoires et sécurisées par Render
