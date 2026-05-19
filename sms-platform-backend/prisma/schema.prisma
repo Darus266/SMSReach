@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id          String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name        String               @db.VarChar(150)
+  apiKey      String?              @unique @map("api_key") @db.VarChar(64)
+  webhookUrl  String?              @map("webhook_url")
+  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime             @default(now()) @map("updated_at") @db.Timestamptz
+  users       User[]
+  wallet      Wallet?
+  senderIds   SenderId[]
+  campaigns   Campaign[]
+
+  @@map("companies")
+}
+
+model User {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  role         String   @default("user") @db.VarChar(50)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@index([companyId], map: "idx_users_company")
+  @@map("users")
+}
+
+model Wallet {
+  id                  String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  companyId           String               @unique @map("company_id") @db.Uuid
+  company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  balance             Decimal              @default(0.0000) @db.Decimal(12, 4)
+  currency            String               @default("EUR") @db.VarChar(3)
+  updatedAt           DateTime             @default(now()) @map("updated_at") @db.Timestamptz
+  transactions        WalletTransaction[]
+  paymentTransactions PaymentTransaction[]
+  autoRechargeSetting AutoRechargeSetting?
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id          BigInt   @id @default(autoincrement())
+  walletId    String   @map("wallet_id") @db.Uuid
+  wallet      Wallet   @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  amount      Decimal  @db.Decimal(12, 4)
+  type        String   @db.VarChar(20) // DEPOSIT, DEBIT_SMS, REFUND
+  referenceId String?  @map("reference_id") @db.VarChar(100)
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([walletId], map: "idx_wallet_transactions_wallet")
+  @@index([createdAt], map: "idx_wallet_transactions_created")
+  @@map("wallet_transactions")
+}
+
+model SenderId {
+  id        String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  companyId String     @map("company_id") @db.Uuid
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String     @db.VarChar(11)
+  status    String     @default("PENDING") @db.VarChar(20) // PENDING, APPROVED, REJECTED
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime   @default(now()) @map("updated_at") @db.Timestamptz
+  campaigns Campaign[]
+
+  @@unique([companyId, name], map: "uq_company_sender_name")
+  @@map("sender_ids")
+}
+
+model Campaign {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  companyId   String    @map("company_id") @db.Uuid
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  senderId    String?   @map("sender_id") @db.Uuid
+  sender      SenderId? @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  name        String    @db.VarChar(255)
+  messageBody String    @map("message_body")
+  status      String    @default("DRAFT") @db.VarChar(20) // DRAFT, SCHEDULED, SENDING, COMPLETED, PAUSED, CANCELLED
+  scheduledAt DateTime? @map("scheduled_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@index([companyId], map: "idx_campaigns_company")
+  @@index([status], map: "idx_campaigns_status")
+  @@map("campaigns")
+}
+
+model SmsLog {
+  id           BigInt   @default(autoincrement())
+  companyId    String   @map("company_id") @db.Uuid
+  campaignId   String?  @map("campaign_id") @db.Uuid
+  senderIdName String   @map("sender_id_name") @db.VarChar(11)
+  recipient    String   @db.VarChar(20)
+  message      String
+  status       String   @default("PENDING") @db.VarChar(20) // PENDING, SENT, DELIVERED, FAILED, EXPIRED
+  cost         Decimal  @default(0.0000) @db.Decimal(8, 4)
+  externalId   String?  @map("external_id") @db.VarChar(100)
+  errorCode    String?  @map("error_code") @db.VarChar(20)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@id([id, createdAt])
+  @@index([companyId, createdAt(sort: Desc)], map: "idx_sms_logs_company_created")
+  @@index([recipient], map: "idx_sms_logs_recipient")
+  @@index([externalId], map: "idx_sms_logs_external_id")
+  @@map("sms_logs")
+}
+
+model SystemLog {
+  id        BigInt   @id @default(autoincrement())
+  level     String   @db.VarChar(10) // INFO, WARN, ERROR, FATAL
+  context   String   @db.VarChar(100) // AUTH, SMS_GATEWAY, BILLING
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([level, createdAt(sort: Desc)], map: "idx_system_logs_level_created")
+  @@index([context], map: "idx_system_logs_context")
+  @@map("system_logs")
+}
+
+model PaymentTransaction {
+  id                String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  walletId          String   @map("wallet_id") @db.Uuid
+  wallet            Wallet   @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  amount            Decimal  @db.Decimal(12, 4) // Montant payé en devise
+  creditsAdded      Decimal  @map("credits_added") @db.Decimal(12, 4) // Crédits ajoutés au solde
+  currency          String   @default("XOF") @db.VarChar(3)
+  provider          String   @db.VarChar(50) // WAVE, ORANGE_MONEY, MTN_MOMO, MOOV
+  phoneNumber       String   @map("phone_number") @db.VarChar(30) // Numéro de téléphone Mobile Money
+  status            String   @default("PENDING") @db.VarChar(20) // PENDING, SUCCESS, FAILED, EXPIRED
+  externalReference String?  @map("external_reference") @db.VarChar(100) // ID de transaction opérateur
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  invoice           Invoice?
+
+  @@index([walletId], map: "idx_payment_transactions_wallet")
+  @@index([status], map: "idx_payment_transactions_status")
+  @@map("payment_transactions")
+}
+
+model AutoRechargeSetting {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  walletId        String   @unique @map("wallet_id") @db.Uuid
+  wallet          Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  enabled         Boolean  @default(false)
+  threshold       Decimal  @default(10.0000) @db.Decimal(12, 4) // Seuil minimum déclencheur
+  rechargeAmount  Decimal  @default(50.0000) @db.Decimal(12, 4) // Montant automatique à créditer
+  provider        String   @default("WAVE") @db.VarChar(50) // WAVE, ORANGE_MONEY, MTN_MOMO
+  phoneNumber     String   @map("phone_number") @db.VarChar(30) // Numéro de facturation automatique
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("auto_recharge_settings")
+}
+
+model Invoice {
+  id              String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  companyId       String             @map("company_id") @db.Uuid
+  transactionId   String             @unique @map("transaction_id") @db.Uuid
+  transaction     PaymentTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  invoiceNumber   String             @unique @map("invoice_number") @db.VarChar(50) // INV-YYYYMMDD-XXXX
+  billingName     String             @map("billing_name") @db.VarChar(150)
+  billingAddress  String?            @map("billing_address")
+  subtotal        Decimal            @db.Decimal(12, 4)
+  tax             Decimal            @db.Decimal(12, 4) // TVA (ex: 18%)
+  total           Decimal            @db.Decimal(12, 4)
+  pdfUrl          String?            @map("pdf_url")
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([companyId], map: "idx_invoices_company")
+  @@map("invoices")
+}
